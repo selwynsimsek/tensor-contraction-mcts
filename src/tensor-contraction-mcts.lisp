@@ -73,21 +73,46 @@
                                             :first-tensor (first list)
                                             :second-tensor (second list))))
 
-(defun do-mcts (&optional (tensor-list *example-tensor-list*))
+(defun do-mcts (tensor-list &key (max-n-playouts 100))
   (let ((result
-          (micmac.uct:uct :root (make-instance 'tensor-contraction-node
-                                               :tensor-list tensor-list)
+          (micmac.uct:uct :root (make-instance 'tensor-contraction-node :tensor-list tensor-list)
                           :fresh-root-state (lambda () 0)
                           :exploration-bias 1
-                          :max-n-playouts 20)))
+                          :max-n-playouts max-n-playouts)))
     (multiple-value-bind (child-node scaling)
         (most-visited-node result)
       (format t "~a~a~@[ ~%[~a]=> ~]" #\Tab (tensor-list result) scaling)
-      (when scaling
-        (do-mcts (tensor-list child-node))))))
+      (if scaling
+          (max scaling (do-mcts (tensor-list child-node)))
+          0))))
 
 (defun most-visited-node (node)
   (when node
     (let ((edge (alexandria:extremum (micmac.uct:edges node) #'> :key #'micmac.uct::n-visits)))
       (when edge (values (micmac.uct:to-node edge)
                          (tensor-contraction-scaling node edge))))))
+
+
+(defun random-equation (n regularity &key (n-out 0))
+  (let* ((number-of-indices (floor (+ n-out
+                                      (/ (* n regularity)
+                                         2))))
+         (indices (alexandria:shuffle
+                          (loop for i from (char-code #\A) repeat number-of-indices
+                                when (< i (+ (char-code #\A) n-out))
+                                collecting #1=(intern (format nil "~a" (code-char i)))
+                                when (>= i (+ (char-code #\A) n-out))
+                                appending (list #1# #1#))))
+         (output (make-list n :initial-element nil)))
+    (loop for index in indices
+          for count from 0
+          do
+          (let ((random-tensor
+                  (if (< count n)
+                      count
+                      (loop with candidate = #2=(random (length output))
+                            do (if (member index (nth candidate output))
+                                   (setf candidate #2#)
+                                   (return candidate))))))
+            (push index (nth random-tensor output)))
+          finally (return output))))
